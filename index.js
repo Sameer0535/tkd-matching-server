@@ -25,25 +25,25 @@ class MatchRoom {
     this.pin = pin;
     this.hostId = hostId; // Jury
     this.referees = new Set();
-    this.pointVotes = []; // Queue of votes
+    this.pointVotes = []; // Queue of votes { socketId, color, points, type, timestamp }
   }
 
-  addVote(socketId, color, points) {
+  addVote(socketId, color, points, type) {
     const now = Date.now();
-    this.pointVotes.push({ socketId, color, points, timestamp: now });
+    this.pointVotes.push({ socketId, color, points, type, timestamp: now });
     
     // Purge old votes
     this.pointVotes = this.pointVotes.filter(v => now - v.timestamp <= WINDOW_MS);
 
-    // Filter relevant votes
-    const matchVotes = this.pointVotes.filter(v => v.color === color && v.points === points);
+    // Filter relevant votes (must match color, points, AND technique type)
+    const matchVotes = this.pointVotes.filter(v => v.color === color && v.points === points && v.type === type);
     
     // Count unique referees who cast this specific vote type in the window
     const uniqueRefs = new Set(matchVotes.map(v => v.socketId));
 
     if (uniqueRefs.size >= REQ_VOTES) {
       // Clear these votes to avoid double counting
-      this.pointVotes = this.pointVotes.filter(v => !(v.color === color && v.points === points));
+      this.pointVotes = this.pointVotes.filter(v => !(v.color === color && v.points === points && v.type === type));
       return true;
     }
     return false;
@@ -94,17 +94,17 @@ io.on('connection', (socket) => {
   });
 
   // Referee fires a point vote
-  socket.on('submit_vote', ({ pin, color, points }) => {
+  socket.on('submit_vote', ({ pin, color, points, type }) => {
     const room = rooms[pin];
     if (!room) return;
 
     // Validate if enough votes happened!
-    const validated = room.addVote(socket.id, color, points);
+    const validated = room.addVote(socket.id, color, points, type);
     
     if (validated) {
-      console.log(`[Room ${pin}] VALIDATED: ${color} +${points}`);
+      console.log(`[Room ${pin}] VALIDATED: ${color} +${points} (${type})`);
       // Notify everyone in the room (primarily the Jury Host)
-      io.to(pin).emit('point_validated', { color, points });
+      io.to(pin).emit('point_validated', { color, points, type });
     }
   });
 

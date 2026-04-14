@@ -35,18 +35,21 @@ class MatchRoom {
     // Purge old votes
     this.pointVotes = this.pointVotes.filter(v => now - v.timestamp <= WINDOW_MS);
 
-    // Filter relevant votes (must match color, points, AND technique type)
-    const matchVotes = this.pointVotes.filter(v => v.color === color && v.points === points && v.type === type);
+    // Filter relevant votes (must match color and points)
+    const matchVotes = this.pointVotes.filter(v => v.color === color && v.points === points);
     
-    // Count unique referees who cast this specific vote type in the window
+    // Count unique referees who cast this specific vote color/points in the window
     const uniqueRefs = new Set(matchVotes.map(v => v.socketId));
 
     if (uniqueRefs.size >= REQ_VOTES) {
+      // Pick a type to broadcast (the first one that isn't null/undefined)
+      const validatedType = matchVotes.find(v => v.type)?.type || type;
+
       // Clear these votes to avoid double counting
-      this.pointVotes = this.pointVotes.filter(v => !(v.color === color && v.points === points && v.type === type));
-      return true;
+      this.pointVotes = this.pointVotes.filter(v => !(v.color === color && v.points === points));
+      return validatedType; // Return the type instead of just true
     }
-    return false;
+    return null;
   }
 }
 
@@ -99,12 +102,12 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     // Validate if enough votes happened!
-    const validated = room.addVote(socket.id, color, points, type);
+    const validatedType = room.addVote(socket.id, color, points, type);
     
-    if (validated) {
-      console.log(`[Room ${pin}] VALIDATED: ${color} +${points} (${type})`);
+    if (validatedType) {
+      console.log(`[Room ${pin}] VALIDATED: ${color} +${points} (${validatedType})`);
       // Notify everyone in the room (primarily the Jury Host)
-      io.to(pin).emit('point_validated', { color, points, type });
+      io.to(pin).emit('point_validated', { color, points, type: validatedType });
     }
   });
 
